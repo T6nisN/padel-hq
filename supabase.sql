@@ -7,7 +7,7 @@
 --   * Passwords are bcrypt-hashed and never leave the database. 10 wrong guesses lock a
 --     player for 15 minutes.
 --   * Admins (players.is_admin) can delete anything, settle any debt and reset passwords.
---     Everyone else: delete own matches, settle debts they're part of, undo own settlements.
+--     Only admins delete matches. Everyone: log matches, settle debts they're part of, undo own settlements.
 
 create extension if not exists pgcrypto with schema extensions;
 
@@ -18,8 +18,10 @@ create table if not exists public.players (
   is_admin        boolean not null default false,
   password_hash   text not null,
   failed_attempts int not null default 0,
-  locked_until    timestamptz
+  locked_until    timestamptz,
+  must_change_password boolean not null default true   -- forced on first login / after admin reset
 );
+alter table public.players add column if not exists must_change_password boolean not null default true;
 
 create table if not exists public.sessions (
   token       text primary key,
@@ -37,8 +39,9 @@ create table if not exists public.matches (
   played_at   timestamptz not null default now(),
   team_a      text[] not null check (array_length(team_a, 1) = 2),
   team_b      text[] not null check (array_length(team_b, 1) = 2),
-  sets        jsonb  not null,               -- e.g. [[6,4],[3,6],[7,5]] as [teamA, teamB]
+  sets        jsonb  not null,               -- regular: [[6,4],[3,6]] games per set; americano: [[16,8]] points
   winner      text   not null check (winner in ('A', 'B')),
+  game_type   text   not null default 'regular' check (game_type in ('regular', 'americano')),
   created_by  text,
   created_at  timestamptz not null default now()
 );
@@ -55,6 +58,13 @@ create table if not exists public.settlements (
 -- For databases created with an earlier version of this script.
 alter table public.matches     add column if not exists created_by text;
 alter table public.settlements add column if not exists created_by text;
+alter table public.matches     add column if not exists game_type text not null default 'regular'
+  check (game_type in ('regular', 'americano'));
+-- Groups the rounds of one Americano training (shown as one card).
+alter table public.matches     add column if not exists session_id uuid;
+-- A substitute appears in team_a/team_b as 'guest'; this is just their display name.
+-- Guests are excluded from stats and beers in the app.
+alter table public.matches     add column if not exists guest_name text check (length(guest_name) <= 30);
 
 -- ---------- identity helpers ----------
 create or replace function public.current_player() returns text
@@ -68,14 +78,14 @@ language sql stable security definer set search_path = public as $$
   select coalesce((select is_admin from public.players where id = public.current_player()), false)
 $$;
 
--- Returns {player, is_admin} for a valid session, null otherwise.
+-- Returns {player, is_admin, must_change} for a valid session, null otherwise.
 create or replace function public.whoami() returns json
 language sql stable security definer set search_path = public as $$
-  select json_build_object('player', id, 'is_admin', is_admin)
+  select json_build_object('player', id, 'is_admin', is_admin, 'must_change', must_change_password)
   from public.players where id = public.current_player()
 $$;
 
--- Returns {token, player, is_admin} on success, {error: 'wrong' | 'locked'} on failure.
+-- Returns {token, player, is_admin, must_change} on success, {error: 'wrong' | 'locked'} on failure.
 create or replace function public.login(p_player text, p_password text) returns json
 language plpgsql volatile security definer set search_path = public, extensions as $$
 declare
@@ -100,7 +110,34 @@ begin
   update public.players set failed_attempts = 0, locked_until = null where id = v.id;
   v_token := encode(gen_random_bytes(32), 'hex');
   insert into public.sessions (token, player_id) values (v_token, v.id);
-  return json_build_object('token', v_token, 'player', v.id, 'is_admin', v.is_admin);
+  return json_build_object('token', v_token, 'player', v.id, 'is_admin', v.is_admin,
+                           'must_change', v.must_change_password);
+end $$;
+
+-- Logged-in player changes their own password. Signs out their other devices.
+-- Returns {ok: true} or {error: 'session' | 'wrong' | 'short'}.
+create or replace function public.change_password(p_current text, p_new text) returns json
+language plpgsql volatile security definer set search_path = public, extensions as $$
+declare
+  v public.players;
+begin
+  select * into v from public.players where id = public.current_player();
+  if v.id is null then
+    return json_build_object('error', 'session');
+  end if;
+  if v.password_hash <> crypt(coalesce(p_current, ''), v.password_hash) then
+    return json_build_object('error', 'wrong');
+  end if;
+  if length(coalesce(p_new, '')) < 6 then
+    return json_build_object('error', 'short');
+  end if;
+  update public.players
+     set password_hash = crypt(p_new, gen_salt('bf', 8)), must_change_password = false
+   where id = v.id;
+  delete from public.sessions
+   where player_id = v.id
+     and token <> coalesce(current_setting('request.headers', true)::json ->> 'x-session', '');
+  return json_build_object('ok', true);
 end $$;
 
 -- Admin only. Sets a new password and signs the player out everywhere
@@ -114,8 +151,10 @@ begin
   if length(coalesce(p_password, '')) < 8 then
     raise exception 'password too short';
   end if;
+  -- Others must pick their own password at next login; an admin resetting themselves doesn't.
   update public.players
-     set password_hash = crypt(p_password, gen_salt('bf', 8)), failed_attempts = 0, locked_until = null
+     set password_hash = crypt(p_password, gen_salt('bf', 8)), failed_attempts = 0, locked_until = null,
+         must_change_password = (p_player <> public.current_player())
    where id = p_player;
   if not found then
     return false;
@@ -150,8 +189,9 @@ create policy read_all on public.matches for select to anon
   using ((select public.current_player()) is not null);
 create policy add_own on public.matches for insert to anon
   with check (created_by = (select public.current_player()));
+-- Only the admin can delete matches.
 create policy delete_own on public.matches for delete to anon
-  using (created_by = (select public.current_player()) or (select public.is_admin()));
+  using ((select public.is_admin()));
 
 create policy read_all on public.settlements for select to anon
   using ((select public.current_player()) is not null);
@@ -169,3 +209,4 @@ grant execute on function public.is_admin()                to anon;
 grant execute on function public.whoami()                  to anon;
 grant execute on function public.login(text, text)         to anon;
 grant execute on function public.set_password(text, text)  to anon;
+grant execute on function public.change_password(text, text) to anon;

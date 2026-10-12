@@ -4,17 +4,29 @@ Match log, leaderboard and beer ledger for Erki, Taavi, Tõnis and Karl.
 A static site (GitHub Pages), with Supabase as the shared database. No build step and no dependencies.
 
 **Rule:** every player on the losing team owes every player on the winning team one beer per match.
-Debts are netted between each pair. Either side marks a debt as paid ("I paid" / "Got it").
+In Americano, that applies per round. Debts are netted between each pair. Either side can mark beers as paid
+("I paid" / "Got it"), all at once or a few at a time.
+
+## Game types
+- **Regular:** pick the teams and enter up to 3 sets.
+- **Americano:** log a whole training in one go. You start with 3 rounds (one full rotation). **+ Add round** continues the rotation,
+  tapping the team names changes a round's pairing, and × removes a round. Draws aren't allowed; play one more point.
+  The rounds show as one card with each player's points total, and Delete removes the whole session.
+- **Guest:** when someone stands in for one of you, pick the **Guest** chip (Americano: under "Who played?").
+  An optional name shows as e.g. "Mart (guest)". Guests aren't on the leaderboard and never owe or receive beers.
+  Their partner's win or loss still counts as normal.
+- On the leaderboard, filter by All / Regular / Americano. Regular counts games and Americano counts points; the two are tracked separately.
 
 ## Who can do what
 
 | | Player | Admin (Tõnis) |
 |---|---|---|
 | View everything, log matches | ✓ | ✓ |
-| Delete a match | own only | any |
-| Mark beers paid | debts you owe or are owed | any |
+| Delete a match | — | ✓ |
+| Mark beers paid (all or part) | debts you owe or are owed | any |
 | Undo a payment | own only | any |
-| Reset passwords (signs that player out everywhere) | — | ✓ |
+| Change own password (tap your name) | ✓ | ✓ |
+| Reset someone's password (signs them out everywhere) | — | ✓ |
 
 The database enforces these rules (row-level security), not just the buttons.
 
@@ -47,10 +59,13 @@ Send each player the link and their own password, privately. Each phone logs in 
 "Add to Home Screen" makes it feel like an app.
 
 ## Passwords
-- Passwords are funny word combos like `adjective-noun-NN`. They're stored bcrypt-hashed in the database and never appear in the site code.
-- Login ignores capitals in names and passwords, and "Tonis" works for "Tõnis".
+- Starting passwords are temporary funny word combos like `adjective-noun-NN`. **On first login, everyone must pick their own password.**
+- Later, tap your name in the top right to change your password. Changing it signs out your other devices.
+- Passwords are stored bcrypt-hashed in the database and never appear in the site code.
+- Names and passwords are not case-sensitive, and "Tonis" works for "Tõnis". Minimum length is 6 characters.
 - 10 wrong guesses lock that player for 15 minutes.
-- Forgotten password: the admin opens **Admin → New password** and passes the new one on.
+- Forgotten password: the admin opens **Admin → New password**. That player gets a new temporary password and must pick their own again at next login.
+- Already ran an older `supabase.sql`? Just run the new one again. It's safe to re-run, and it adds the new columns and functions.
 
 ## Adding a player
 Add them to `players` in `config.js`, then add a row to the `players` table with a hashed password
