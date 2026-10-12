@@ -1,6 +1,10 @@
 (() => {
   'use strict';
 
+  // iOS Safari ignores user-scalable=no for pinch-zoom; cancel its gesture events instead.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(type =>
+    document.addEventListener(type, e => e.preventDefault(), { passive: false }));
+
   const CFG = window.PADEL_CONFIG;
   const PLAYERS = CFG.players;
   const BY_ID = Object.fromEntries(PLAYERS.map(p => [p.id, p]));
