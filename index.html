@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Padel HQ</title>
+  <meta name="theme-color" content="#0b0d0c">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0d0c'/><circle cx='16' cy='16' r='9' fill='%23d4ff00'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="club-name">Padel HQ</h1>
+    <span id="whoami" class="whoami" hidden></span>
+  </header>
+
+  <main id="view" aria-live="polite"></main>
+
+  <button id="fab" class="fab" aria-label="Log a match">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <nav class="tabs">
+    <button data-tab="matches">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Matches
+    </button>
+    <button data-tab="table">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6"/></svg>Table
+    </button>
+    <button data-tab="beers">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h10v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8zM16 10h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2M6 8c0-2 2-4 5-4s5 2 5 4M10 12v5M13 12v5"/></svg>Beers
+    </button>
+    <button data-tab="admin" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z"/></svg>Admin
+    </button>
+  </nav>
+
+  <dialog id="modal"></dialog>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
